@@ -133,7 +133,7 @@ def main():
     err_history_y = deque(maxlen=120)
     laser_on = False
     LASER_THRESHOLD = 15.0  # 误差小于此值开激光 (px)
-    
+    distery = 0         #历史上是否检测到过矩形？
     # 摄像头读取帧
     try:
         while True:
@@ -145,11 +145,19 @@ def main():
 
             frame = cv2.flip(frame, -1)
             h, w = frame.shape[:2]
-
+            #---------------------------------------------------------------------------------------------------
             # 对每帧执行矩形检测
             rects = detect_rectangles(frame, min_area_ratio=0.005, max_area_ratio=0.5, angle_tol=25.0)
+            # 选择面积最大的矩形
             best = rects[0] if rects else None
 
+            if best is not None:
+                distery = 1
+            # else:
+            #     if distery == 1:
+            #         gimbal.laser_off(); laser_on = False
+            #         print("激光 关闭")
+            #     distery = 0
             # 计算 FPS
             now = time.time()
             dt = now - prev_time
@@ -165,7 +173,10 @@ def main():
             if ret:
                 gimbal.speed_ctrl(ctrl_out.yaw_rpm, ctrl_out.pitch_rpm)
             elif best is None:
-                gimbal.stop()  # 丢目标立即停转，防 pitch 跑飞
+                if distery == 1:
+                    gimbal.stop()  # 丢目标立即停转，防 pitch 跑飞
+                else:
+                    gimbal.speed_ctrl(10, 0)
 
             # 激光：误差小于阈值打开，丢目标关闭
             if best is not None:
@@ -173,11 +184,11 @@ def main():
                 if err_dist < LASER_THRESHOLD and not laser_on:
                     gimbal.laser_on(); laser_on = True
                     print("激光 开启")
-            else:
-                if laser_on:
-                    gimbal.laser_off(); laser_on = False
-                    print("激光 关闭")
-
+            # else:
+            #     if laser_on:
+            #         gimbal.laser_off(); laser_on = False
+            #         print("激光 关闭")
+            #---------------------------------------------------------------------------------------------------
             # 终端诊断输出
             if best and int(time.time() * 2) % 60 == 0:
                 cx, cy = best.center
@@ -185,6 +196,7 @@ def main():
             elif not best and int(time.time() * 2) % 60 == 0:
                 print(f"[检测] 无目标")
 
+            # 显示
             if display:
                 if best is not None:
                     draw_detected_rect(frame, best)
